@@ -30,12 +30,12 @@ EFFECTS: dict[str, Callable[..., object]] = {
 }
 
 def run_effect(effect_name: str) -> None:
+    if effect_name not in EFFECTS:
+        raise ValueError(f"Unknown effect: {effect_name}")
+
     input_dir = ROOT / "data" / "input" / effect_name
     output_dir = ROOT / "data" / "output" / effect_name
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    if effect_name not in EFFECTS:
-        raise ValueError(f"Unknown effect: {effect_name}")
 
     source_path = input_dir / "source.png"
     mask_path = input_dir / "mask.png"
@@ -76,13 +76,13 @@ def run_effect(effect_name: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run a Poisson image editing effect.")
     parser.add_argument(
-        "--example",
+        "--effect",
         required=True,
         choices=sorted(EFFECTS.keys()),
         help="Effect to execute (matches the folder name under data/input/).",
     )
     args = parser.parse_args()
-    run_effect(args.example)
+    run_effect(args.effect)
 
 
 if __name__ == "__main__":
