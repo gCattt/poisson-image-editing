@@ -1,8 +1,6 @@
 from __future__ import annotations
-
 from pathlib import Path
 from typing import Iterable, Tuple, Union
-
 import numpy as np
 from PIL import Image
 from skimage.draw import polygon as sk_polygon

@@ -1,8 +1,10 @@
 from __future__ import annotations
 import argparse
+import json
+import numpy as np
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 # Make `src/` importable without installing the package.
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,8 +21,7 @@ from editing.effects.illumination import local_illumination_change
 from editing.effects.color import local_color_change
 from editing.effects.tile import seamless_tiling
 
-
-EFFECTS: dict[str, Callable[..., object]] = {
+EFFECTS: dict[str, Callable[..., Any]] = {
 	"seamless_cloning": seamless_cloning,
 	"mixed_gradients": mixed_gradients,
 	"texture_flattening": texture_flattening,
@@ -28,6 +29,25 @@ EFFECTS: dict[str, Callable[..., object]] = {
 	"local_color_change": local_color_change,
 	"seamless_tiling": seamless_tiling,
 }
+
+
+def load_metadata(input_dir: Path) -> dict[str, Any]:
+    meta_path = input_dir / "meta.json"
+
+    if not meta_path.exists():
+        return {}
+
+    with open(meta_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+    
+def load_offset(input_dir: Path) -> tuple[int, int]:
+    metadata = load_metadata(input_dir)
+    offset = metadata.get("offset", [0, 0])
+
+    if not isinstance(offset, list) or len(offset) != 2:
+        raise ValueError(f"Invalid offset in {input_dir / 'meta.json'}")
+
+    return int(offset[0]), int(offset[1])
 
 def run_effect(effect_name: str) -> None:
     if effect_name not in EFFECTS:
@@ -48,18 +68,42 @@ def run_effect(effect_name: str) -> None:
     mask = load_mask(mask_path) if mask_path.exists() else None
     destination = load_image(destination_path) if destination_path.exists() else None
 
+    MAX_SIZE = 800
+    h_s, w_s = source.shape[:2]
+
+    max_dim = max(h_s, w_s)
+    if destination is not None:
+        max_dim = max(max_dim, destination.shape[0], destination.shape[1])
+
+    if max_dim > MAX_SIZE:
+        from PIL import Image
+        scale = MAX_SIZE / max_dim
+
+        new_size_s = (int(w_s * scale), int(h_s * scale))
+        source = np.asarray(Image.fromarray(source).resize(new_size_s, Image.Resampling.BILINEAR))
+
+        if mask is not None:
+            mask_uint8 = (mask.astype(np.uint8) * 255)
+            mask = np.asarray(Image.fromarray(mask_uint8).resize(new_size_s, Image.Resampling.NEAREST)) > 128
+
+        if destination is not None:
+            h_d, w_d = destination.shape[:2]
+            new_size_d = (int(w_d * scale), int(h_d * scale))
+            destination = np.asarray(Image.fromarray(destination).resize(new_size_d, Image.Resampling.BILINEAR))
+
+        raw_offset = load_offset(input_dir)
+        offset = (int(raw_offset[0] * scale), int(raw_offset[1] * scale))
+    else:
+        offset = load_offset(input_dir)
+
     effect_fn = EFFECTS[effect_name]
     
     if effect_name in {"seamless_cloning", "mixed_gradients"}: 
         if destination is None or mask is None: 
             raise FileNotFoundError( f"{effect_name} requires source.png, destination.png and mask.png" ) 
-        result = effect_fn(source, destination, mask)
+        result = effect_fn(source, destination, mask, offset)
 
-    elif effect_name in { 
-        "texture_flattening", 
-        "local_illumination_change", 
-        "local_color_change", 
-    }: 
+    elif effect_name in { "texture_flattening", "local_illumination_change", "local_color_change"}: 
         if mask is None: 
             raise FileNotFoundError(f"{effect_name} requires source.png and mask.png") 
         result = effect_fn(source, mask)
