@@ -20,10 +20,3 @@ def divergence(vx: np.ndarray, vy: np.ndarray) -> np.ndarray:
     div[:-1, :] += vy[:-1, :]
     div[1:, :] -= vy[:-1, :]
     return div
-
-def mixed_gradient(source: np.ndarray, target: np.ndarray):
-    sx, sy = image_gradient(source)
-    tx, ty = image_gradient(target)
-    gx = np.where(np.abs(sx) >= np.abs(tx), sx, tx)
-    gy = np.where(np.abs(sy) >= np.abs(ty), sy, ty)
-    return gx, gy
