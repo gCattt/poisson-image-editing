@@ -2,8 +2,7 @@ from __future__ import annotations
 from typing import Dict, Tuple
 import numpy as np
 
-from ..solver import solve_sparse
-from ..system import build_system
+from ..solver import solve_poisson_channel
 
 _NEIGHBORS_4 = ((-1, 0), (1, 0), (0, -1), (0, 1))
 Edge = Tuple[int, int]
@@ -44,11 +43,7 @@ def _solve_channel(
 	Solve one color channel of seamless cloning.
 	"""
     guidance = _build_source_guidance(source_channel)
-    system = build_system(destination_channel, mask, guidance=guidance)
-    sol = solve_sparse(system.A, system.b, method="spsolve")
-
-    result = np.asarray(destination_channel, dtype=np.float64).copy()
-    result[mask] = sol
+    result = solve_poisson_channel(destination_channel, mask, guidance)
     return result
 
 def seamless_cloning(
