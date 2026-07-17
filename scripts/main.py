@@ -49,7 +49,7 @@ def load_offset(input_dir: Path) -> tuple[int, int]:
 
     return int(offset[0]), int(offset[1])
 
-def run_effect(effect_name: str) -> None:
+def run_effect(effect_name: str, mode: str = 'subject') -> None:
     if effect_name not in EFFECTS:
         raise ValueError(f"Unknown effect: {effect_name}")
 
@@ -106,7 +106,7 @@ def run_effect(effect_name: str) -> None:
     elif effect_name in { "texture_flattening", "local_illumination_change", "local_color_change"}: 
         if mask is None: 
             raise FileNotFoundError(f"{effect_name} requires source.png and mask.png") 
-        result = effect_fn(source, mask)
+        result = effect_fn(source, mask, mode=mode)
 
     elif effect_name == "seamless_tiling": 
         result = effect_fn(source)
@@ -125,8 +125,15 @@ def main() -> None:
         choices=sorted(EFFECTS.keys()),
         help="Effect to execute (matches the folder name under data/input/).",
     )
+    parser.add_argument(
+        "--mode", 
+        default="subject", 
+        choices=["subject", "background"],
+        help="Mode for local_color_change (only relevant for that effect).",
+    )
+
     args = parser.parse_args()
-    run_effect(args.effect)
+    run_effect(args.effect, mode=args.mode)
 
 
 if __name__ == "__main__":
