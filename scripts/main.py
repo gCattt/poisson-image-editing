@@ -111,6 +111,10 @@ def run_effect(effect_name: str, mode: str = 'subject') -> None:
     elif effect_name == "seamless_tiling": 
         result = effect_fn(source)
 
+        reps = (2, 2, 1) if result.ndim == 3 else (2, 2)
+        tiled_preview = np.tile(result, reps)
+        save_image(tiled_preview, output_dir / "tiled_preview.png")
+
     else: 
         raise ValueError(f"Unknown effect: {effect_name}")
 
