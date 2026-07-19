@@ -1,3 +1,10 @@
+"""Local color change by scaling the gradient of each color channel.
+
+The effect works by solving a Poisson problem whose guidance field is derived
+from the original image gradients multiplied by per-channel scale factors. This
+changes the hue of the selected region while keeping its structure consistent.
+"""
+
 from __future__ import annotations
 from typing import Dict, Tuple
 import numpy as np
@@ -14,7 +21,7 @@ def _build_color_guidance(
     scale: float
 ) -> Dict[Edge, np.ndarray]:
     """
-    Construit the guidance field for Local Color Change.
+    Construct the guidance field for Local Color Change.
     Equivalent to scaling the source image g by a constant factor and taking its gradient.
     v = nabla(scale * f_original) = scale * nabla(f_original)
     """
@@ -30,7 +37,7 @@ def _build_color_guidance(
         x1 = w - max(0, dx)
 
         if y1 > y0 and x1 > x0:
-            # Original gradient for channel c
+            # Each channel is solved independently, but its gradient is scaled.
             diff_c = img_roi_float[y0:y1, x0:x1, c] - img_roi_float[y0 + dy : y1 + dy, x0 + dx : x1 + dx, c]
             
             # Multiply the gradient by the color scaling factor
@@ -50,24 +57,25 @@ def local_color_change(
     blue_scale: float = 0.5
 ) -> np.ndarray:
     """
-    Modifies the color of a selected object in a coarse manner.
+    Modify the color of a selected object in a coarse manner.
     Scales the gradients of individual RGB channels to change the hue while preserving texture and illumination.
 
-    mode: 'subject' or 'background'. Determines whether the color change is applied to the masked region (subject) or its complement (background).
+    mode: In 'subject' mode, the masked object is recolored by scaling the gradient in each channel. 
+    In 'background' mode, the image background is converted to gray and the object is solved against that grayscale boundary.
     red_scale, green_scale, blue_scale: Scaling factors for the R, G, B channels respectively.
     For example, (1.5, 0.5, 0.5) would increase the red channel and decrease the green and blue channels, warming up the image).
     """
     image = np.asarray(image)
     mask = np.asarray(mask).astype(bool)
 
-    if image.ndim != 3 or image.shape[2] != 3: 
-        raise ValueError("The image must be RGB") 
-    if mask.shape != image.shape[:2]: 
+    if image.ndim != 3 or image.shape[2] != 3:
+        raise ValueError("The image must be RGB")
+    if mask.shape != image.shape[:2]:
         raise ValueError("The mask must have the same shape (H, W) as the image")
     
     # 1. Initialize result early to avoid UnboundLocalError
     result = image.astype(np.float64).copy()
-    
+
     ys, xs = np.where(mask)
     if len(ys) == 0:
         if mode == 'subject':
@@ -77,7 +85,7 @@ def local_color_change(
             lum = 0.299 * result[:, :, 0] + 0.587 * result[:, :, 1] + 0.114 * result[:, :, 2]
             return np.stack([lum, lum, lum], axis=-1).astype(np.uint8)
 
-    # 2. Extract bounding box (ROI) for massive speed optimization in BOTH modes
+    # 2. Restrict the solve to a tight bounding box around the masked object for speed
     h, w = image.shape[:2]
     ymin = max(0, ys.min() - 1)
     ymax = min(h - 1, ys.max() + 1)
@@ -86,7 +94,7 @@ def local_color_change(
 
     img_roi_float = result[ymin : ymax + 1, xmin : xmax + 1]
     mask_crop = mask[ymin : ymax + 1, xmin : xmax + 1]
-    
+
     if mode == 'subject':
         # Array of scaling factors corresponding to the channels (R=0, G=1, B=2)
         scales = [red_scale, green_scale, blue_scale]
@@ -96,20 +104,20 @@ def local_color_change(
         for c in range(3):
             guidance = _build_color_guidance(img_roi_float, c, scales[c])
             dest_roi[:, :, c] = solve_poisson_channel(img_roi_float[:, :, c], mask_crop, guidance=guidance)
-            
+
         result[ymin : ymax + 1, xmin : xmax + 1] = dest_roi
 
     elif mode == 'background':
-        # Create a grayscale version of the ENTIRE image to serve as the background
+        # Convert the full image to grayscale so the object is solved against a flat background.
         lum = 0.299 * result[:, :, 0] + 0.587 * result[:, :, 1] + 0.114 * result[:, :, 2]
         dest_gray = np.stack([lum, lum, lum], axis=-1)
         
         # Extract the ROI of the grayscale background
         dest_roi = dest_gray[ymin : ymax + 1, xmin : xmax + 1].copy()
         
-        # We solve Poisson INSIDE the object. The boundary is the grayscale background.
+        # Solve Poisson INSIDE the object. The boundary is the grayscale background.
         for c in range(3):
-            # Scale is 1.0 (we keep original colors of the object)
+            # Scale is 1.0 (keep the original colors of the object)
             guidance = _build_color_guidance(img_roi_float, c, 1.0)
             dest_roi[:, :, c] = solve_poisson_channel(dest_roi[:, :, c], mask_crop, guidance=guidance)
             

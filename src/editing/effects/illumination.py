@@ -1,3 +1,10 @@
+"""Local illumination change using logarithmic-domain gradient compression.
+
+The effect brightens shadows and suppresses highlights by compressing the image's
+log-domain gradients according to a luminance-based scale map. The Poisson solve
+then rebuilds the region so the resulting illumination change feels natural.
+"""
+
 from __future__ import annotations
 from typing import Dict, Tuple
 import numpy as np
@@ -13,10 +20,7 @@ def _build_illumination_guidance(
     img_log_c: np.ndarray,
     scale_map: np.ndarray
 ) -> Dict[Edge, np.ndarray]:
-    """
-    Construct the guidance field for Local Illumination Change.
-    Multiply the original gradient (in the logarithmic domain) by the compression map.
-    """
+    """Construct the guidance field by scaling log-domain gradients with a luminance map."""
     h, w = img_log_c.shape
     guidance: Dict[Edge, np.ndarray] = {}
 
@@ -50,7 +54,7 @@ def local_illumination_change(
     beta: float = 0.2
 ) -> np.ndarray:
     """
-    Modifies the local illumination of a region by compressing its dynamic range.
+    Modify local illumination of a region by compressing its dynamic range in the logarithmic domain.
     Useful for brightening shadows or reducing strong highlights while preserving texture.
 
     alpha_factor: Fraction (e.g., 0.2) of the average gradient. Controls the compression threshold.
@@ -61,15 +65,15 @@ def local_illumination_change(
     image = np.asarray(image)
     mask = np.asarray(mask).astype(bool)
 
-    if image.ndim != 3 or image.shape[2] != 3: 
-        raise ValueError("The image must be RGB") 
-    if mask.shape != image.shape[:2]: 
+    if image.ndim != 3 or image.shape[2] != 3:
+        raise ValueError("The image must be RGB")
+    if mask.shape != image.shape[:2]:
         raise ValueError("The mask must have the same shape (H, W) as the image")
-    
+
     ys, xs = np.where(mask)
     if len(ys) == 0:
         return image.copy()
-    
+
     h, w = image.shape[:2]
 
     ymin = max(0, ys.min() - 1)
@@ -86,10 +90,10 @@ def local_illumination_change(
 
     # 2. Transform the entire ROI to the logarithmic domain
     img_log = np.log(np.clip(img_roi_float, eps, 1.0))
-    
-    # 3. Calculate the Luminance to generate a scale map neutral with respect to color
-    lum = (0.299 * img_roi_float[:, :, 0] + 
-           0.587 * img_roi_float[:, :, 1] + 
+
+    # 3. Luminance is used to compute a single scale map that applies to all channels.
+    lum = (0.299 * img_roi_float[:, :, 0] +
+           0.587 * img_roi_float[:, :, 1] +
            0.114 * img_roi_float[:, :, 2])
     log_lum = np.log(np.clip(lum, eps, 1.0))
     
@@ -98,7 +102,7 @@ def local_illumination_change(
     gy = sobel(log_lum, axis=0)
     magnitude = np.sqrt(gx**2 + gy**2)
     
-    # 5. Fattal et al. suggest using the average gradient magnitude in the masked region to determine the compression threshold.
+    # 5. Use the average gradient magnitude in the masked region to determine the compression threshold.
     mean_mag = np.mean(magnitude[mask_crop]) + eps
     alpha_val = alpha_factor * mean_mag
     
@@ -114,8 +118,8 @@ def local_illumination_change(
         
         # The boundary conditions are given by img_log (which represents the original image in log)
         dest_roi_log[:, :, c] = solve_poisson_channel(
-            img_log[:, :, c], 
-            mask_crop, 
+            img_log[:, :, c],
+            mask_crop,
             guidance=guidance
         )
         

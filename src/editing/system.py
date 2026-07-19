@@ -1,3 +1,11 @@
+"""Assemble the sparse linear system that defines each Poisson-editing solve.
+
+The solver works by turning one image channel into a discrete system of the form
+$A x = b$, where unknowns are the values of the masked pixels. The guidance
+field supplies the desired gradient constraints, and the destination image
+provides the Dirichlet boundary values for pixels outside the mask.
+"""
+
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Tuple
@@ -10,12 +18,14 @@ Edge = Tuple[int, int]
 
 @dataclass(frozen=True)
 class PoissonSystem:
+    """Container for the assembled sparse system and the associated indexing data."""
     A: csr_matrix
     b: np.ndarray
     index_map: np.ndarray
     coords: np.ndarray
 
 def build_index_map(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Map every masked pixel to a compact index used by the linear system."""
     mask = mask.astype(bool)
     coords = np.argwhere(mask)
     index_map = -np.ones(mask.shape, dtype=np.int32)
@@ -31,11 +41,12 @@ def build_system(
     guidance: Dict[Edge, np.ndarray] | None = None,
 ) -> PoissonSystem:
     """
-    Build A x = b for one color channel.
+    Build the sparse system A x = b for one color channel.
 
-    guidance is a dict:
-        (dy, dx) -> array with the same shape of the image
-    containing v_pq values for each pixel p and direction (dy, dx).
+    The guidance dictionary stores per-direction gradient values for each pixel.
+    When a neighboring pixel is outside the mask, the corresponding boundary value
+    is taken from the destination channel. When it is inside the mask, it becomes
+    a coupling term in the matrix A.
     """
     dest = np.asarray(destination_channel, dtype=np.float64)
     mask = mask.astype(bool)
@@ -69,10 +80,12 @@ def build_system(
                 rhs += float(edge_field[y, x])
 
             if mask[ny, nx]:
+                # Interior neighbor: add a -1 entry in the matrix for the coupling.
                 rows.append(k)
                 cols.append(index_map[ny, nx])
                 data.append(-1.0)
             else:
+                # Exterior neighbor: contribute its value as a boundary term to b.
                 rhs += dest[ny, nx]
 
         rows.append(k)

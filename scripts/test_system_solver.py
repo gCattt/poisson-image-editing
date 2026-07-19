@@ -1,3 +1,5 @@
+"""Simple regression test for the sparse Poisson system assembly and solver."""
+
 from __future__ import annotations
 import sys
 from pathlib import Path
@@ -13,11 +15,11 @@ from editing.solver import solve_sparse
 
 
 def main() -> None:
-    # 5x5 image, 3x3 mask in the center
+    # A small 5x5 example with a central 3x3 mask exercises the sparse assembly logic.
     mask = np.zeros((5, 5), dtype=bool)
     mask[1:4, 1:4] = True
 
-    # Constant destination channel
+    # Constant destination channel means the solution for the masked region should remain constant.
     destination = np.full((5, 5), 50.0, dtype=np.float64)
 
     system = build_system(destination, mask, guidance=None)

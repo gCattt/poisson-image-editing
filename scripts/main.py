@@ -1,3 +1,10 @@
+"""CLI entry point for running the Poisson-image-editing effects.
+
+The script loads source, destination, and mask images from the data directory,
+selects the requested effect, and saves the generated output under the matching
+output folder. It also handles optional resizing and metadata-based offsets.
+"""
+
 from __future__ import annotations
 import argparse
 import json
@@ -22,16 +29,17 @@ from editing.effects.color import local_color_change
 from editing.effects.tile import seamless_tiling
 
 EFFECTS: dict[str, Callable[..., Any]] = {
-	"seamless_cloning": seamless_cloning,
-	"mixed_gradients": mixed_gradients,
-	"texture_flattening": texture_flattening,
-	"local_illumination_change": local_illumination_change,
-	"local_color_change": local_color_change,
-	"seamless_tiling": seamless_tiling,
+    "seamless_cloning": seamless_cloning,
+    "mixed_gradients": mixed_gradients,
+    "texture_flattening": texture_flattening,
+    "local_illumination_change": local_illumination_change,
+    "local_color_change": local_color_change,
+    "seamless_tiling": seamless_tiling,
 }
 
 
 def load_metadata(input_dir: Path) -> dict[str, Any]:
+    """Read optional JSON metadata from an effect input directory."""
     meta_path = input_dir / "meta.json"
 
     if not meta_path.exists():
@@ -41,6 +49,7 @@ def load_metadata(input_dir: Path) -> dict[str, Any]:
         return json.load(f)
     
 def load_offset(input_dir: Path) -> tuple[int, int]:
+    """Load the patch offset from an input directory's metadata file."""
     metadata = load_metadata(input_dir)
     offset = metadata.get("offset", [0, 0])
 
@@ -50,6 +59,7 @@ def load_offset(input_dir: Path) -> tuple[int, int]:
     return int(offset[0]), int(offset[1])
 
 def run_effect(effect_name: str, mode: str = 'subject') -> None:
+    """Run one effect end to end and write its output to disk."""
     if effect_name not in EFFECTS:
         raise ValueError(f"Unknown effect: {effect_name}")
 
@@ -61,14 +71,14 @@ def run_effect(effect_name: str, mode: str = 'subject') -> None:
     mask_path = input_dir / "mask.png"
     destination_path = input_dir / "destination.png"
 
-    if not source_path.exists(): 
+    if not source_path.exists():
         raise FileNotFoundError(f"Missing source image: {source_path}")
 
     source = load_image(source_path)
     mask = load_mask(mask_path) if mask_path.exists() else None
     destination = load_image(destination_path) if destination_path.exists() else None
 
-    MAX_SIZE = 800
+    MAX_SIZE = 1280  # Maximum dimension for processing (to avoid excessive memory usage)
     h_s, w_s = source.shape[:2]
 
     max_dim = max(h_s, w_s)
@@ -97,31 +107,32 @@ def run_effect(effect_name: str, mode: str = 'subject') -> None:
         offset = load_offset(input_dir)
 
     effect_fn = EFFECTS[effect_name]
-    
-    if effect_name in {"seamless_cloning", "mixed_gradients"}: 
-        if destination is None or mask is None: 
-            raise FileNotFoundError( f"{effect_name} requires source.png, destination.png and mask.png" ) 
+
+    if effect_name in {"seamless_cloning", "mixed_gradients"}:
+        if destination is None or mask is None:
+            raise FileNotFoundError(f"{effect_name} requires source.png, destination.png and mask.png")
         result = effect_fn(source, destination, mask, offset)
 
-    elif effect_name in { "texture_flattening", "local_illumination_change", "local_color_change"}: 
-        if mask is None: 
-            raise FileNotFoundError(f"{effect_name} requires source.png and mask.png") 
+    elif effect_name in {"texture_flattening", "local_illumination_change", "local_color_change"}:
+        if mask is None:
+            raise FileNotFoundError(f"{effect_name} requires source.png and mask.png")
         result = effect_fn(source, mask, mode=mode)
 
-    elif effect_name == "seamless_tiling": 
+    elif effect_name == "seamless_tiling":
         result = effect_fn(source)
 
         reps = (2, 2, 1) if result.ndim == 3 else (2, 2)
         tiled_preview = np.tile(result, reps)
         save_image(tiled_preview, output_dir / "tiled_preview.png")
 
-    else: 
+    else:
         raise ValueError(f"Unknown effect: {effect_name}")
 
     save_image(result, output_dir / "result.png")
     print(f"Saved result to {output_dir / 'result.png'}")
 
 def main() -> None:
+    """Parse command-line arguments and execute the requested effect."""
     parser = argparse.ArgumentParser(description="Run a Poisson image editing effect.")
     parser.add_argument(
         "--effect",
@@ -130,8 +141,8 @@ def main() -> None:
         help="Effect to execute (matches the folder name under data/input/).",
     )
     parser.add_argument(
-        "--mode", 
-        default="subject", 
+        "--mode",
+        default="subject",
         choices=["subject", "background"],
         help="Mode for local_color_change (only relevant for that effect).",
     )

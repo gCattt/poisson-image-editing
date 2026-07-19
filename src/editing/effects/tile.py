@@ -1,3 +1,10 @@
+"""Create tileable images by solving a Poisson problem on the image borders.
+
+The method blends the image edges so that a tiled composition is visually smooth.
+It uses a boundary image with averaged edge values and then solves for the inner
+pixels while preserving the original image gradients.
+"""
+
 from __future__ import annotations
 import numpy as np
 
@@ -5,16 +12,13 @@ from ..solver import solve_poisson_channel
 
 
 def _compute_guidance(img_channel: np.ndarray) -> dict[tuple[int, int], np.ndarray]:
-    """
-    Calculate the vector field (g_q - g_p) for the 4 directions.
-    This logic aligns perfectly with _NEIGHBORS_4 in system.py.
-    """
+    """Compute four directional gradient fields for the image channel."""
     guidance = {}
-    
+
     for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
         v = np.zeros_like(img_channel, dtype=np.float64)
         
-        # Calculate finite differences: Current Pixel (p) - Neighbor Pixel (q)
+        # The sign convention is chosen to match the Poisson system's neighbor handling.
         if dy == -1:    # Nord (q is above p: y-1)
             v[1:, :] = img_channel[1:, :] - img_channel[:-1, :]
         elif dy == 1:   # Sud (q is below p: y+1)
@@ -23,46 +27,39 @@ def _compute_guidance(img_channel: np.ndarray) -> dict[tuple[int, int], np.ndarr
             v[:, 1:] = img_channel[:, 1:] - img_channel[:, :-1]
         elif dx == 1:   # Est (q is to the right of p: x+1)
             v[:, :-1] = img_channel[:, :-1] - img_channel[:, 1:]
-            
+
         guidance[(dy, dx)] = v
-        
+
     return guidance
 
 def _create_boundary_image(img_channel: np.ndarray) -> np.ndarray:
-    """
-    Apply the boundary condition by calculating the average of opposite edges.
-    """
+    """Construct a boundary image whose edge values are averaged to remove seams."""
     dest = img_channel.copy().astype(np.float64)
     
     # Calculate the averages using the original values to avoid sequential overwriting
     ns_avg = 0.5 * (img_channel[0, :] + img_channel[-1, :])
     ew_avg = 0.5 * (img_channel[:, 0] + img_channel[:, -1])
     
-    # For the corners, we take the average of all four corners to avoid asymmetry
+    # For the corners, take the average of all four corners to avoid asymmetry
     corner_avg = 0.25 * (
-        img_channel[0, 0] + img_channel[0, -1] + 
+        img_channel[0, 0] + img_channel[0, -1] +
         img_channel[-1, 0] + img_channel[-1, -1]
     )
-    
-    # Assign the averaged values to the edges
+
+    # The border is forced to the average of its opposite neighbors to make the tiling seamless.
     dest[0, :] = ns_avg
     dest[-1, :] = ns_avg
     dest[:, 0] = ew_avg
     dest[:, -1] = ew_avg
-    
-    # Force the exact angles
     dest[0, 0] = corner_avg
     dest[0, -1] = corner_avg
     dest[-1, 0] = corner_avg
     dest[-1, -1] = corner_avg
-    
+
     return dest
 
 def seamless_tiling(image: np.ndarray, method: str = "spsolve") -> np.ndarray:
-    """
-    Generate a seamless (tileable) image using Poisson editing.
-    Supports grayscale (2D) and color (3D) images.
-    """
+    """Generate a tileable image by solving a Poisson system on the inner region."""
     is_rgb = image.ndim == 3
     if not is_rgb:
         image = image[..., np.newaxis]
@@ -70,8 +67,7 @@ def seamless_tiling(image: np.ndarray, method: str = "spsolve") -> np.ndarray:
     h, w, c = image.shape
     result = np.zeros_like(image, dtype=np.float64)
 
-    # The mask defines the internal region where the Poisson equation is solved.
-    # The edges of the image (1 pixel) will remain False (these are our boundary conditions).
+    # The mask excludes the border pixels, so the solver only reconstructs the interior.
     mask = np.ones((h, w), dtype=bool)
     mask[0, :] = False
     mask[-1, :] = False
@@ -100,5 +96,5 @@ def seamless_tiling(image: np.ndarray, method: str = "spsolve") -> np.ndarray:
 
     if not is_rgb:
         return result[:, :, 0]
-    
+
     return result
