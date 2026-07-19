@@ -18,6 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.place_mask import interactive_placement
 
 from editing.io_utils import load_image, save_image
 from editing.masks import load_mask
@@ -135,19 +139,32 @@ def main() -> None:
     """Parse command-line arguments and execute the requested effect."""
     parser = argparse.ArgumentParser(description="Run a Poisson image editing effect.")
     parser.add_argument(
-        "--effect",
+        "--effect", "-e",
         required=True,
         choices=sorted(EFFECTS.keys()),
         help="Effect to execute (matches the folder name under data/input/).",
     )
     parser.add_argument(
-        "--mode",
+        "--mode", "-m",
         default="subject",
         choices=["subject", "background"],
         help="Mode for local_color_change (only relevant for that effect).",
     )
+    parser.add_argument(
+        "--interactive", "-i",
+        action="store_true",
+        help="Open the interactive mask placement tool before execution.",
+    )
 
     args = parser.parse_args()
+
+    if args.interactive:
+        if args.effect in {"seamless_cloning", "mixed_gradients"}:
+            print("Starting interactive placement...")
+            interactive_placement(args.effect)
+        else:
+            print(f"Warning: --interactive ignored. The effect {args.effect} does not use an offset.")
+
     run_effect(args.effect, mode=args.mode)
 
 
