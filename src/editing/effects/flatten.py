@@ -51,7 +51,7 @@ def _build_flatten_guidance(
 def texture_flattening(
     image: np.ndarray,
     mask: np.ndarray,
-    canny_sigma: float = 1.5,
+    canny_sigma: float = 1.0,
     low_threshold: float | None = None,
     high_threshold: float | None = None
 ) -> np.ndarray:

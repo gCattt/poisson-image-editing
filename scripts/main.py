@@ -124,7 +124,10 @@ def run_effect(effect_name: str, mode: str = 'subject', texture_transfer: bool =
     elif effect_name in {"texture_flattening", "local_illumination_change", "local_color_change"}:
         if mask is None:
             raise FileNotFoundError(f"{effect_name} requires source.png and mask.png")
-        result = effect_fn(source, mask, mode=mode)
+        if effect_name == "local_color_change":
+            result = effect_fn(source, mask, mode=mode)
+        else:
+            result = effect_fn(source, mask)
 
     elif effect_name == "seamless_tiling":
         result = effect_fn(source)
