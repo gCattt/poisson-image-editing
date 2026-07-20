@@ -133,8 +133,11 @@ def run_effect(effect_name: str, mode: str = 'subject', texture_transfer: bool =
         result = effect_fn(source)
 
         reps = (2, 2, 1) if result.ndim == 3 else (2, 2)
-        tiled_preview = np.tile(result, reps)
-        save_image(tiled_preview, output_dir / "tiled_preview.png")
+        tile_preview = np.tile(source, reps)
+        save_image(tile_preview, output_dir / "tile_preview.png")
+
+        tile_result = np.tile(result, reps)
+        save_image(tile_result, output_dir / "tile_result.png")
 
     else:
         raise ValueError(f"Unknown effect: {effect_name}")
