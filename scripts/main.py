@@ -62,7 +62,7 @@ def load_offset(input_dir: Path) -> tuple[int, int]:
 
     return int(offset[0]), int(offset[1])
 
-def run_effect(effect_name: str, mode: str = 'subject') -> None:
+def run_effect(effect_name: str, mode: str = 'subject', texture_transfer: bool = False) -> None:
     """Run one effect end to end and write its output to disk."""
     if effect_name not in EFFECTS:
         raise ValueError(f"Unknown effect: {effect_name}")
@@ -81,6 +81,10 @@ def run_effect(effect_name: str, mode: str = 'subject') -> None:
     source = load_image(source_path)
     mask = load_mask(mask_path) if mask_path.exists() else None
     destination = load_image(destination_path) if destination_path.exists() else None
+
+    if texture_transfer and effect_name == "seamless_cloning":
+        gray = np.dot(source[..., :3], [0.2989, 0.5870, 0.1140])
+        source = np.stack([gray, gray, gray], axis=-1).astype(np.uint8)
 
     MAX_SIZE = 1280  # Maximum dimension for processing (to avoid excessive memory usage)
     h_s, w_s = source.shape[:2]
@@ -155,6 +159,11 @@ def main() -> None:
         action="store_true",
         help="Open the interactive mask placement tool before execution.",
     )
+    parser.add_argument(
+        "--texture-transfer", "-t",
+        action="store_true",
+        help="Convert the source image to grayscale before applying seamless_cloning.",
+    )
 
     args = parser.parse_args()
 
@@ -165,7 +174,7 @@ def main() -> None:
         else:
             print(f"Warning: --interactive ignored. The effect {args.effect} does not use an offset.")
 
-    run_effect(args.effect, mode=args.mode)
+    run_effect(args.effect, mode=args.mode, texture_transfer=args.texture_transfer)
 
 
 if __name__ == "__main__":
