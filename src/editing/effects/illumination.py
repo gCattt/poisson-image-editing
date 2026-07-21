@@ -86,6 +86,7 @@ def local_illumination_change(
     mask_crop = mask[ymin : ymax + 1, xmin : xmax + 1]
     
     # Constant epsilon to avoid instability with the logarithm of zero or divisions by zero
+    # Sometimes, the image may have very dark pixels (near zero) or saturated pixels which can cause issues in the log domain.
     eps = 1e-6
 
     # 2. Transform the entire ROI to the logarithmic domain
